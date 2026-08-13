@@ -113,4 +113,38 @@ def is_high_value(self) -> bool:
 
 @property
 def device_tier(self) -> str: 
-      return {"5G": "HIGH", "WIFI": "HIGH", "4G": "MID", "2G": "LOW"}[self.network] # this right here checks the key , which has been assigned to the network type and returns the corresponding device tier based on the mapping provided in the dictionary.
+      return {"5G": "HIGH", "WIFI": "HIGH", "4G": "MID", "2G": "LOW"}[self.network] # this right here checks the key , which has been assigned to the network type and returns the corresponding device tier based on the mapping provided in the dictionary.]
+
+def weighted_choice(dictionary : dict ) -> str : 
+    keys = list(dictionary.keys())
+    values = list(dictionary.values())
+    return random.choices(keys, weights=values, k=1)[0] 
+
+def context_generator()-> TransactionContext: 
+    rail = weighted_choice({k: sum(v.values()) for k, v in RAIL_ISSUER_CONDITIONAL.items()})
+    issuer_bank = weighted_choice(RAIL_ISSUER_CONDITIONAL[rail])
+    network = weighted_choice(RAIL_NETWORK_CONDITIONAL[rail])
+    geography_tier = weighted_choice(ISSUER_TIER_CONDITIONAL.get(issuer_bank, ISSUER_TIER_CONDITIONAL["_DEFAULT"]))
+    merchant_category = weighted_choice({k: v["weight"] for k, v in MERCHANT_CATEGORIES.items() if rail in v["rails"]})
+    amount_params = RAIL_AMOUNT_PARAMS[rail]
+    amount_inr = np.clip(st.lognorm(s=amount_params[1], scale=np.exp(amount_params[0])).rvs(), 1, 5e5)
+    hour_of_day = random.randint(0, 23)
+    day_of_week = random.randint(0, 6)
+    is_peak_hour = hour_of_day in range(8, 11) or hour_of_day in range(18, 21)
+    is_salary_day = day_of_week == 4 and hour_of_day in range(9, 17)  # Assuming salary day is Friday
+    sim_time = datetime.now().timestamp()
+    
+    return TransactionContext(
+        txn_id=str(random.randint(1000000000, 9999999999)),
+        rail=rail,
+        issuer_bank=issuer_bank,
+        network=network,
+        geography_tier=geography_tier,
+        merchant_category=merchant_category,
+        amount_inr=amount_inr,
+        hour_of_day=hour_of_day,
+        day_of_week=day_of_week,
+        is_peak_hour=is_peak_hour,
+        is_salary_day=is_salary_day,
+        sim_time=sim_time
+    )    
