@@ -5,6 +5,8 @@ import numpy as np
 
 # ── Marginal distributions ────────────────────────────────────────────────────
 
+
+
 # Flat rail distribution — used for primary rail sampling
 RAIL_DISTRIBUTION = {
     "UPI":        0.75,
@@ -14,6 +16,8 @@ RAIL_DISTRIBUTION = {
     "WALLETS":    0.01,
     "BNPL_EMI":   0.01,
 }
+
+
 
 # Fallback issuer distribution — used when rail has no conditional entry
 # (IMPS, WALLETS, BNPL_EMI fall back to this)
@@ -35,6 +39,12 @@ ISSUER_DISTRIBUTION = {
 }
 
 
+
+
+
+
+
+
 # ── Conditional distributions ─────────────────────────────────────────────────
 
 # P(Network | Rail)
@@ -46,6 +56,12 @@ RAIL_NETWORK_CONDITIONAL = {
     "WALLETS":    {"5G": 0.45, "4G": 0.48, "WIFI": 0.07, "2G": 0.00},
     "BNPL_EMI":   {"5G": 0.50, "4G": 0.35, "WIFI": 0.15, "2G": 0.00},
 }
+
+
+
+
+
+
 
 # P(Issuer | Rail)
 # IMPS, WALLETS, BNPL_EMI are not listed here — they fall back to
@@ -71,6 +87,12 @@ RAIL_ISSUER_CONDITIONAL = {
     },
 }
 
+
+
+
+
+
+
 # P(GeographyTier | Issuer)
 # Banks with no entry fall back to _DEFAULT
 ISSUER_TIER_CONDITIONAL = {
@@ -85,6 +107,10 @@ ISSUER_TIER_CONDITIONAL = {
 }
 
 
+
+
+
+
 # ── Amount distributions per rail ─────────────────────────────────────────────
 # Log-normal params: (mu, sigma) — calibrated to realistic INR ranges
 RAIL_AMOUNT_PARAMS = {
@@ -97,6 +123,9 @@ RAIL_AMOUNT_PARAMS = {
 }
 
 
+
+
+
 # ── Merchant categories ───────────────────────────────────────────────────────
 # Each category has eligible rails and a sampling weight
 MERCHANT_CATEGORIES = {
@@ -104,13 +133,22 @@ MERCHANT_CATEGORIES = {
         "rails": ["UPI", "CARDS", "NETBANKING", "WALLETS", "BNPL_EMI"],
         "weight": 0.35,
     },
+
+
     "FOOD_DELIVERY": {"rails": ["UPI", "CARDS", "WALLETS"], "weight": 0.15},
+
     "EDUCATION": {"rails": ["UPI", "CARDS", "NETBANKING"], "weight": 0.10},
+
     "UTILITY": {"rails": ["UPI", "NETBANKING", "CARDS"], "weight": 0.12},
+
     "TRAVEL": {"rails": ["CARDS", "NETBANKING", "UPI", "BNPL_EMI"], "weight": 0.10},
+
     "GROCERY": {"rails": ["UPI", "CARDS", "WALLETS"], "weight": 0.12},
+
     "HEALTHCARE": {"rails": ["UPI", "CARDS", "NETBANKING"], "weight": 0.06},
 }
+
+
 
 
 # ── Sampling utility ──────────────────────────────────────────────────────────
@@ -135,6 +173,8 @@ def weighted_choice(distribution: dict, given: str | None = None) -> str:
         issuer  = weighted_choice(RAIL_ISSUER_CONDITIONAL,  given=rail)
         tier    = weighted_choice(ISSUER_TIER_CONDITIONAL,  given=issuer)
 
+        
+
     Raises:
         KeyError: if `given` is not found in a nested distribution
         TypeError: if `given` is omitted but values are dicts
@@ -147,24 +187,34 @@ def weighted_choice(distribution: dict, given: str | None = None) -> str:
                 f"Conditioning key '{given}' not found. "
                 f"Available keys: {list(distribution.keys())}"
             )
+
+        
         if not isinstance(inner, dict):
             raise TypeError(
                 f"Expected nested dict for key '{given}', "
                 f"got {type(inner).__name__}."
             )
+        
         target = inner
+
+
     else:
         target = distribution
         first_val = next(iter(target.values()), None)
+
+
         if isinstance(first_val, dict):
             raise TypeError(
                 "Distribution values are dicts — this is a conditional distribution. "
                 "Pass given=<key> to condition on a variable."
             )
 
+        
+
     keys    = list(target.keys())
     weights = list(target.values())
     return random.choices(keys, weights=weights, k=1)[0]
+
 
 
 # ── Transaction context dataclass ─────────────────────────────────────────────
@@ -298,54 +348,3 @@ def context_generator(txn_id: str, sim_time: float) -> TransactionContext:
         sim_time          = sim_time,
     )
 
-
-# ── Quick verification (run this file directly to sanity-check output) ────────
-
-if __name__ == "__main__":
-    from collections import Counter
-
-    print("Running 10,000 sample verification...\n")
-
-    rail_counts    = Counter()
-    network_counts = Counter()
-    issuer_counts  = Counter()
-    tier_counts    = Counter()
-
-    # Verify NETBANKING never produces 2G
-    netbanking_2g = 0
-
-    for i in range(5):
-        ctx = context_generator(txn_id=f"TEST_{i:05d}", sim_time=float(i * 3))
-        rail_counts[ctx.rail]          += 1
-        network_counts[ctx.network]    += 1
-        issuer_counts[ctx.issuer_bank] += 1
-        tier_counts[ctx.geography_tier]+= 1
-        if ctx.rail == "NETBANKING" and ctx.network == "2G":
-            netbanking_2g += 1
-
-    total = 5
-    print("Rail distribution:")
-    for k, v in sorted(rail_counts.items(), key=lambda x: -x[1]):
-        print(f"  {k:<14} {v/total:.3f}  (expected: {RAIL_DISTRIBUTION.get(k, 0):.3f})")
-
-    print("\nNetwork distribution:")
-    for k, v in sorted(network_counts.items(), key=lambda x: -x[1]):
-        print(f"  {k:<8} {v/total:.3f}")
-
-    print("\nTop 5 issuers:")
-    for k, v in sorted(issuer_counts.items(), key=lambda x: -x[1])[:5]:
-        print(f"  {k:<14} {v/total:.3f}")
-
-    print("\nGeography tier distribution:")
-    for k, v in sorted(tier_counts.items(), key=lambda x: -x[1]):
-        print(f"  {k:<8} {v/total:.3f}")
-
-    print(f"\nNETBANKING + 2G occurrences: {netbanking_2g}  (expected: 0)")
-
-    # Sample one context and print it
-    print("\nSample TransactionContext:")
-    ctx = context_generator("SAMPLE_001", sim_time=3600.0)
-    for f in ctx.__dataclass_fields__:
-        print(f"  {f:<20} {getattr(ctx, f)}")
-    print(f"  {'is_high_value':<20} {ctx.is_high_value}")
-    print(f"  {'device_tier':<20} {ctx.device_tier}")
